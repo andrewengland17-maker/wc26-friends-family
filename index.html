@@ -6,7 +6,7 @@
   <title>WC26 Predictions</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=DM+Mono:wght@400;500&family=DM+Serif+Display:ital@0;1&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=DM+Serif+Display:ital@0;1&display=swap" rel="stylesheet" />
   <script src="https://unpkg.com/react@18.3.1/umd/react.production.min.js"></script>
   <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/@babel/standalone@7.24.7/babel.min.js"></script>
@@ -2294,11 +2294,11 @@ function Header({ user, userProfile, onLogout, view, setView, saveStatus, locked
     }) && !!(joker.team && joker.group);
 
     // Knockout: all 32 KO matches (73-104) have scores, draws have pk winners
-    // Simpler check: just verify ko[mId] has values for all matches
+    // User predictions store penalty winner as r.pk (not r.pkWinner which is admin results)
     const koDone = groupDone && range(73, 104).every(mId => {
       const r = ko[mId];
       if (!r || r.h === '' || r.h == null || r.a === '' || r.a == null) return false;
-      if (parseInt(r.h) === parseInt(r.a) && !r.pkWinner) return false;
+      if (parseInt(r.h) === parseInt(r.a) && !r.pk) return false;
       return true;
     });
 
