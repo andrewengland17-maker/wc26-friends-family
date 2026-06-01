@@ -16,6 +16,188 @@
 <body style="margin:0">
   <div id="root"></div>
   <script>window.__COMPETITION_ID = 'friends-family';</script>
+  <!-- Print function as plain JS — not processed by Babel to avoid template literal mangling -->
+  <script>
+const generatePrintWindow = (predictions, user, profiles) => {
+  const group = predictions.group || {};
+  const ko = predictions.ko || {};
+  const bonus = predictions.bonus || {};
+  const joker = predictions.joker || {};
+  const profile = profiles[user] || {};
+
+  const { bracket } = buildBracket(group, ko);
+
+  const flag = (team) => TEAM_FLAGS[team] || '🏳';
+  const short = (team) => team ? (team.length > 14 ? team.slice(0, 13) + '…' : team) : '?';
+
+  // Build group rows HTML
+  let groupsHtml = '';
+  GROUP_KEYS.forEach(g => {
+    const matches = GROUP_MATCHES.filter(m => m.group === g);
+    groupsHtml += `<div class="group-block">
+      <div class="group-title">Group ${g}</div>
+      <table class="match-table">
+        ${matches.map(m => {
+          const r = group[m.id] || {};
+          const hasScore = r.h !== '' && r.h != null && r.a !== '' && r.a != null;
+          return `<tr>
+            <td class="team home">${flag(m.home)} ${short(m.home)}</td>
+            <td class="score">${hasScore ? `${r.h} – ${r.a}` : '_ – _'}</td>
+            <td class="team away">${flag(m.away)} ${short(m.away)}</td>
+          </tr>`;
+        }).join('')}
+      </table>
+    </div>`;
+  });
+
+  // Build bracket rounds HTML
+  const rounds = [
+    { label: 'Round of 32', ids: range(73, 88) },
+    { label: 'Round of 16', ids: range(89, 96) },
+    { label: 'Quarter Finals', ids: range(97, 100) },
+    { label: 'Semi Finals', ids: range(101, 102) },
+    { label: '3rd Place Play-off', ids: [103] },
+    { label: 'Final', ids: [104] },
+  ];
+
+  let bracketHtml = '';
+  rounds.forEach(({ label, ids }) => {
+    const matchRows = ids.map(mId => {
+      const m = bracket[mId];
+      if (!m) return '';
+      const r = ko[mId] || {};
+      const hasScore = r.h !== '' && r.h != null && r.a !== '' && r.a != null;
+      const isDraw = hasScore && parseInt(r.h) === parseInt(r.a);
+      return `<tr>
+        <td class="match-id">M${mId}</td>
+        <td class="team home">${m.home ? `${flag(m.home)} ${short(m.home)}` : '<span class="tbd">TBD</span>'}</td>
+        <td class="score">${hasScore ? `${r.h} – ${r.a}${isDraw && r.pk ? ` (${short(r.pk)} pens)` : ''}` : '_ – _'}</td>
+        <td class="team away">${m.away ? `${flag(m.away)} ${short(m.away)}` : '<span class="tbd">TBD</span>'}</td>
+      </tr>`;
+    }).join('');
+    if (!matchRows.trim()) return;
+    bracketHtml += `<div class="round-block">
+      <div class="round-title">${label}</div>
+      <table class="match-table">${matchRows}</table>
+    </div>`;
+  });
+
+  // Bonus picks HTML
+  const bonusHtml = `
+    <div class="bonus-block">
+      <div class="round-title">Bonus Picks</div>
+      <table class="bonus-table">
+        <tr><td class="bonus-label">🏆 Winner</td><td>${bonus.winner ? `${flag(bonus.winner)} ${bonus.winner}` : '—'}</td></tr>
+        <tr><td class="bonus-label">🥈 Runner-up</td><td>${bonus.runnerUp ? `${flag(bonus.runnerUp)} ${bonus.runnerUp}` : '—'}</td></tr>
+        <tr><td class="bonus-label">🥉 3rd Place</td><td>${bonus.thirdPlace ? `${flag(bonus.thirdPlace)} ${bonus.thirdPlace}` : '—'}</td></tr>
+        <tr><td class="bonus-label">⚽ Golden Boot</td><td>${bonus.goldenBoot || '—'}</td></tr>
+        <tr><td class="bonus-label">⏱ Tie-break</td><td>${bonus.tiebreak || '—'}</td></tr>
+        <tr><td class="bonus-label">🃏 Joker Team</td><td>${joker.team ? `${flag(joker.team)} ${joker.team}` : '—'}</td></tr>
+        <tr><td class="bonus-label">🃏 Joker Group</td><td>${joker.group ? `Group ${joker.group}` : '—'}</td></tr>
+      </table>
+    </div>`;
+
+  const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <title>WC26 Predictions — ${user}</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 11px; color: #1a1715; background: white; }
+    .page { width: 100%; max-width: 780px; margin: 0 auto; padding: 20px; }
+    .header { border-bottom: 2px solid #9f1b1b; padding-bottom: 12px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: flex-end; }
+    .header-title { font-size: 22px; font-weight: 700; letter-spacing: -0.02em; }
+    .header-title span { color: #9f1b1b; font-style: italic; }
+    .header-meta { font-size: 11px; color: #6b635b; text-align: right; line-height: 1.6; }
+    .section-title { font-size: 14px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #9f1b1b; border-bottom: 1px solid #ddd2b8; padding-bottom: 4px; margin-bottom: 14px; }
+    .groups-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-bottom: 24px; }
+    .group-block { break-inside: avoid; }
+    .group-title { font-size: 11px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: #6b635b; margin-bottom: 4px; }
+    .match-table { width: 100%; border-collapse: collapse; }
+    .match-table tr { border-bottom: 1px solid #ede7d6; }
+    .match-table td { padding: 4px 3px; vertical-align: middle; }
+    .team { max-width: 120px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .team.home { text-align: right; }
+    .team.away { text-align: left; }
+    .score { text-align: center; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; padding: 4px 8px; color: #1b5e3f; }
+    .match-id { font-size: 9px; color: #9b9087; width: 28px; }
+    .tbd { color: #bbb; font-style: italic; }
+    .round-block { break-inside: avoid; margin-bottom: 16px; }
+    .round-title { font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #6b635b; margin-bottom: 4px; }
+    .bracket-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 24px; margin-bottom: 24px; }
+    .bracket-grid .round-block:last-child { grid-column: 1 / -1; }
+    .bonus-block { break-inside: avoid; }
+    .bonus-table { width: 100%; border-collapse: collapse; }
+    .bonus-table tr { border-bottom: 1px solid #ede7d6; }
+    .bonus-table td { padding: 6px 4px; }
+    .bonus-label { font-weight: 600; color: #6b635b; width: 140px; }
+    .page-break { page-break-after: always; break-after: page; }
+    .footer { margin-top: 24px; border-top: 1px solid #ddd2b8; padding-top: 8px; font-size: 10px; color: #9b9087; display: flex; justify-content: space-between; }
+    @media print {
+      body { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+      .no-print { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <div class="header">
+      <div>
+        <div class="header-title">WC26 <span>Predictions</span></div>
+        <div style="font-size:12px;color:#6b635b;margin-top:2px;">FIFA World Cup 2026 · June 11 – July 19</div>
+      </div>
+      <div class="header-meta">
+        <strong>${user}</strong><br/>
+        ${profile.team ? profile.team + ' · ' : ''}${profile.country || ''}<br/>
+        Printed ${new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+      </div>
+    </div>
+
+    <div class="section-title">Group Stage Predictions</div>
+    <div class="groups-grid">${groupsHtml}</div>
+
+    <div class="footer">
+      <span>SCB Treasury WC26 Predictions Competition</span>
+      <span>Page 1 of 2</span>
+    </div>
+  </div>
+
+  <div class="page-break"></div>
+
+  <div class="page">
+    <div class="header">
+      <div>
+        <div class="header-title">WC26 <span>Predictions</span></div>
+        <div style="font-size:12px;color:#6b635b;margin-top:2px;">Knockout Stage & Bonus Picks</div>
+      </div>
+      <div class="header-meta">
+        <strong>${user}</strong><br/>
+        ${profile.team ? profile.team + ' · ' : ''}${profile.country || ''}
+      </div>
+    </div>
+
+    <div class="section-title">Knockout Bracket</div>
+    <div class="bracket-grid">${bracketHtml}</div>
+
+    ${bonusHtml}
+
+    <div class="footer">
+      <span>SCB Treasury WC26 Predictions Competition</span>
+      <span>Page 2 of 2</span>
+    </div>
+  </div>
+
+  <script>window.print();</script>
+</body>
+</html>`;
+
+  const blob = new Blob([html], { type: 'text/html' });
+  const url = URL.createObjectURL(blob);
+  window.open(url, '_blank');
+};
+
+  </script>
   <script type="text/babel">
 const { useState, useEffect, useMemo, useCallback } = React;
 
@@ -2290,186 +2472,7 @@ function LoginScreen({ onLogin, participants, profiles }) {
 // ──────────────────────────────────────────────────────────────────────
 
 // ── PDF / Print export ────────────────────────────────────────────────
-const generatePrintWindow = (predictions, user, profiles) => {
-  const group = predictions.group || {};
-  const ko = predictions.ko || {};
-  const bonus = predictions.bonus || {};
-  const joker = predictions.joker || {};
-  const profile = profiles[user] || {};
-
-  const { bracket } = buildBracket(group, ko);
-
-  const flag = (team) => TEAM_FLAGS[team] || '🏳';
-  const short = (team) => team ? (team.length > 14 ? team.slice(0, 13) + '…' : team) : '?';
-
-  // Build group rows HTML
-  let groupsHtml = '';
-  GROUP_KEYS.forEach(g => {
-    const matches = GROUP_MATCHES.filter(m => m.group === g);
-    groupsHtml += `<div class="group-block">
-      <div class="group-title">Group ${g}</div>
-      <table class="match-table">
-        ${matches.map(m => {
-          const r = group[m.id] || {};
-          const hasScore = r.h !== '' && r.h != null && r.a !== '' && r.a != null;
-          return `<tr>
-            <td class="team home">${flag(m.home)} ${short(m.home)}</td>
-            <td class="score">${hasScore ? `${r.h} – ${r.a}` : '_ – _'}</td>
-            <td class="team away">${flag(m.away)} ${short(m.away)}</td>
-          </tr>`;
-        }).join('')}
-      </table>
-    </div>`;
-  });
-
-  // Build bracket rounds HTML
-  const rounds = [
-    { label: 'Round of 32', ids: range(73, 88) },
-    { label: 'Round of 16', ids: range(89, 96) },
-    { label: 'Quarter Finals', ids: range(97, 100) },
-    { label: 'Semi Finals', ids: range(101, 102) },
-    { label: '3rd Place Play-off', ids: [103] },
-    { label: 'Final', ids: [104] },
-  ];
-
-  let bracketHtml = '';
-  rounds.forEach(({ label, ids }) => {
-    const matchRows = ids.map(mId => {
-      const m = bracket[mId];
-      if (!m) return '';
-      const r = ko[mId] || {};
-      const hasScore = r.h !== '' && r.h != null && r.a !== '' && r.a != null;
-      const isDraw = hasScore && parseInt(r.h) === parseInt(r.a);
-      return `<tr>
-        <td class="match-id">M${mId}</td>
-        <td class="team home">${m.home ? `${flag(m.home)} ${short(m.home)}` : '<span class="tbd">TBD</span>'}</td>
-        <td class="score">${hasScore ? `${r.h} – ${r.a}${isDraw && r.pk ? ` (${short(r.pk)} pens)` : ''}` : '_ – _'}</td>
-        <td class="team away">${m.away ? `${flag(m.away)} ${short(m.away)}` : '<span class="tbd">TBD</span>'}</td>
-      </tr>`;
-    }).join('');
-    if (!matchRows.trim()) return;
-    bracketHtml += `<div class="round-block">
-      <div class="round-title">${label}</div>
-      <table class="match-table">${matchRows}</table>
-    </div>`;
-  });
-
-  // Bonus picks HTML
-  const bonusHtml = `
-    <div class="bonus-block">
-      <div class="round-title">Bonus Picks</div>
-      <table class="bonus-table">
-        <tr><td class="bonus-label">🏆 Winner</td><td>${bonus.winner ? `${flag(bonus.winner)} ${bonus.winner}` : '—'}</td></tr>
-        <tr><td class="bonus-label">🥈 Runner-up</td><td>${bonus.runnerUp ? `${flag(bonus.runnerUp)} ${bonus.runnerUp}` : '—'}</td></tr>
-        <tr><td class="bonus-label">🥉 3rd Place</td><td>${bonus.thirdPlace ? `${flag(bonus.thirdPlace)} ${bonus.thirdPlace}` : '—'}</td></tr>
-        <tr><td class="bonus-label">⚽ Golden Boot</td><td>${bonus.goldenBoot || '—'}</td></tr>
-        <tr><td class="bonus-label">⏱ Tie-break</td><td>${bonus.tiebreak || '—'}</td></tr>
-        <tr><td class="bonus-label">🃏 Joker Team</td><td>${joker.team ? `${flag(joker.team)} ${joker.team}` : '—'}</td></tr>
-        <tr><td class="bonus-label">🃏 Joker Group</td><td>${joker.group ? `Group ${joker.group}` : '—'}</td></tr>
-      </table>
-    </div>`;
-
-  const html = `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8"/>
-  <title>WC26 Predictions — ${user}</title>
-  <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 11px; color: #1a1715; background: white; }
-    .page { width: 100%; max-width: 780px; margin: 0 auto; padding: 20px; }
-    .header { border-bottom: 2px solid #9f1b1b; padding-bottom: 12px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: flex-end; }
-    .header-title { font-size: 22px; font-weight: 700; letter-spacing: -0.02em; }
-    .header-title span { color: #9f1b1b; font-style: italic; }
-    .header-meta { font-size: 11px; color: #6b635b; text-align: right; line-height: 1.6; }
-    .section-title { font-size: 14px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #9f1b1b; border-bottom: 1px solid #ddd2b8; padding-bottom: 4px; margin-bottom: 14px; }
-    .groups-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-bottom: 24px; }
-    .group-block { break-inside: avoid; }
-    .group-title { font-size: 11px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: #6b635b; margin-bottom: 4px; }
-    .match-table { width: 100%; border-collapse: collapse; }
-    .match-table tr { border-bottom: 1px solid #ede7d6; }
-    .match-table td { padding: 4px 3px; vertical-align: middle; }
-    .team { max-width: 120px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .team.home { text-align: right; }
-    .team.away { text-align: left; }
-    .score { text-align: center; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; padding: 4px 8px; color: #1b5e3f; }
-    .match-id { font-size: 9px; color: #9b9087; width: 28px; }
-    .tbd { color: #bbb; font-style: italic; }
-    .round-block { break-inside: avoid; margin-bottom: 16px; }
-    .round-title { font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #6b635b; margin-bottom: 4px; }
-    .bracket-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 24px; margin-bottom: 24px; }
-    .bracket-grid .round-block:last-child { grid-column: 1 / -1; }
-    .bonus-block { break-inside: avoid; }
-    .bonus-table { width: 100%; border-collapse: collapse; }
-    .bonus-table tr { border-bottom: 1px solid #ede7d6; }
-    .bonus-table td { padding: 6px 4px; }
-    .bonus-label { font-weight: 600; color: #6b635b; width: 140px; }
-    .page-break { page-break-after: always; break-after: page; }
-    .footer { margin-top: 24px; border-top: 1px solid #ddd2b8; padding-top: 8px; font-size: 10px; color: #9b9087; display: flex; justify-content: space-between; }
-    @media print {
-      body { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
-      .no-print { display: none; }
-    }
-  </style>
-</head>
-<body>
-  <div class="page">
-    <div class="header">
-      <div>
-        <div class="header-title">WC26 <span>Predictions</span></div>
-        <div style="font-size:12px;color:#6b635b;margin-top:2px;">FIFA World Cup 2026 · June 11 – July 19</div>
-      </div>
-      <div class="header-meta">
-        <strong>${user}</strong><br/>
-        ${profile.team ? profile.team + ' · ' : ''}${profile.country || ''}<br/>
-        Printed ${new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
-      </div>
-    </div>
-
-    <div class="section-title">Group Stage Predictions</div>
-    <div class="groups-grid">${groupsHtml}</div>
-
-    <div class="footer">
-      <span>SCB Treasury WC26 Predictions Competition</span>
-      <span>Page 1 of 2</span>
-    </div>
-  </div>
-
-  <div class="page-break"></div>
-
-  <div class="page">
-    <div class="header">
-      <div>
-        <div class="header-title">WC26 <span>Predictions</span></div>
-        <div style="font-size:12px;color:#6b635b;margin-top:2px;">Knockout Stage & Bonus Picks</div>
-      </div>
-      <div class="header-meta">
-        <strong>${user}</strong><br/>
-        ${profile.team ? profile.team + ' · ' : ''}${profile.country || ''}
-      </div>
-    </div>
-
-    <div class="section-title">Knockout Bracket</div>
-    <div class="bracket-grid">${bracketHtml}</div>
-
-    ${bonusHtml}
-
-    <div class="footer">
-      <span>SCB Treasury WC26 Predictions Competition</span>
-      <span>Page 2 of 2</span>
-    </div>
-  </div>
-
-  <script>window.print();</script>
-</body>
-</html>`;
-
-  const win = window.open('', '_blank');
-  if (win) {
-    win.document.write(html);
-    win.document.close();
-  }
-};
+// generatePrintWindow injected as plain script — see HTML build
 
 function Header({ user, userProfile, onLogout, view, setView, saveStatus, locked, predictions, profiles }) {
   // Compute completion status for each tab
