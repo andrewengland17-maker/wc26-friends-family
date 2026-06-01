@@ -6,7 +6,7 @@
   <title>WC26 Predictions</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=DM+Serif+Display:ital@0;1&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=DM+Mono:wght@400;500&family=DM+Serif+Display:ital@0;1&display=swap" rel="stylesheet" />
   <script src="https://unpkg.com/react@18.3.1/umd/react.production.min.js"></script>
   <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/@babel/standalone@7.24.7/babel.min.js"></script>
@@ -1813,7 +1813,7 @@ const CURRENT_USER_KEY = `${NS}-current-user`;
 const SCB_TEAMS = [
   'TMT', 'AME CT', 'ASA CT', 'E&A CT', 'GCNA CT',
   'TM', 'Capital', 'COO', 'Liquidity', 'RRP',
-  'CRO', 'CFO', 'GFS', 'Non-Treasury',
+  'CRO', 'CFO', 'GCFO IN', 'Non-Treasury',
 ];
 
 const SCB_COUNTRIES = [
@@ -1825,6 +1825,16 @@ const SCB_COUNTRIES = [
   'Qatar','Saudi Arabia','Singapore','South Africa','Taiwan',
   'Tanzania','Thailand','UAE','UK','Vietnam','Zambia','Zimbabwe','Other',
 ];
+
+const COUNTRY_REGION = {
+  'Australia':'ASA','Bahrain':'AME','Bangladesh':'ASA','Brunei':'ASA','Botswana':'AME',
+  'China':'GCNA','Egypt':'AME','Germany':'E&A','Ghana':'AME','Hong Kong':'GCNA',
+  'India':'ASA','Indonesia':'ASA','Iraq':'AME','Ivory Coast':'AME','Japan':'GCNA',
+  'Jordan':'AME','Kenya':'AME','Korea':'GCNA','Malaysia':'ASA','Mauritius':'AME',
+  'Nepal':'ASA','Nigeria':'AME','Pakistan':'AME','Philippines':'ASA','Poland':'E&A',
+  'Qatar':'AME','Saudi Arabia':'AME','Singapore':'ASA','South Africa':'AME','Taiwan':'GCNA',
+  'Tanzania':'AME','Thailand':'ASA','UAE':'AME','UK':'E&A','Vietnam':'ASA','Zambia':'AME','Zimbabwe':'AME',
+};
 
 // ──────────────────────────────────────────────────────────────────────
 // UI HELPERS / TOKENS
@@ -2028,6 +2038,7 @@ function App() {
         userProfile={profiles[currentUser] || null}
         locked={locked}
         predictions={predictions}
+        profiles={profiles}
       />
       {locked && view !== 'admin' && (
         <div style={{ background: 'var(--burgundy)', color: 'white', textAlign: 'center', padding: '8px 16px', fontSize: 13, fontWeight: 600, letterSpacing: '0.04em' }}>
@@ -2278,7 +2289,189 @@ function LoginScreen({ onLogin, participants, profiles }) {
 // HEADER / NAV
 // ──────────────────────────────────────────────────────────────────────
 
-function Header({ user, userProfile, onLogout, view, setView, saveStatus, locked, predictions }) {
+// ── PDF / Print export ────────────────────────────────────────────────
+const generatePrintWindow = (predictions, user, profiles) => {
+  const group = predictions.group || {};
+  const ko = predictions.ko || {};
+  const bonus = predictions.bonus || {};
+  const joker = predictions.joker || {};
+  const profile = profiles[user] || {};
+
+  const { bracket } = buildBracket(group, ko);
+
+  const flag = (team) => TEAM_FLAGS[team] || '🏳';
+  const short = (team) => team ? (team.length > 14 ? team.slice(0, 13) + '…' : team) : '?';
+
+  // Build group rows HTML
+  let groupsHtml = '';
+  GROUP_KEYS.forEach(g => {
+    const matches = GROUP_MATCHES.filter(m => m.group === g);
+    groupsHtml += `<div class="group-block">
+      <div class="group-title">Group ${g}</div>
+      <table class="match-table">
+        ${matches.map(m => {
+          const r = group[m.id] || {};
+          const hasScore = r.h !== '' && r.h != null && r.a !== '' && r.a != null;
+          return `<tr>
+            <td class="team home">${flag(m.home)} ${short(m.home)}</td>
+            <td class="score">${hasScore ? `${r.h} – ${r.a}` : '_ – _'}</td>
+            <td class="team away">${flag(m.away)} ${short(m.away)}</td>
+          </tr>`;
+        }).join('')}
+      </table>
+    </div>`;
+  });
+
+  // Build bracket rounds HTML
+  const rounds = [
+    { label: 'Round of 32', ids: range(73, 88) },
+    { label: 'Round of 16', ids: range(89, 96) },
+    { label: 'Quarter Finals', ids: range(97, 100) },
+    { label: 'Semi Finals', ids: range(101, 102) },
+    { label: '3rd Place Play-off', ids: [103] },
+    { label: 'Final', ids: [104] },
+  ];
+
+  let bracketHtml = '';
+  rounds.forEach(({ label, ids }) => {
+    const matchRows = ids.map(mId => {
+      const m = bracket[mId];
+      if (!m) return '';
+      const r = ko[mId] || {};
+      const hasScore = r.h !== '' && r.h != null && r.a !== '' && r.a != null;
+      const isDraw = hasScore && parseInt(r.h) === parseInt(r.a);
+      return `<tr>
+        <td class="match-id">M${mId}</td>
+        <td class="team home">${m.home ? `${flag(m.home)} ${short(m.home)}` : '<span class="tbd">TBD</span>'}</td>
+        <td class="score">${hasScore ? `${r.h} – ${r.a}${isDraw && r.pk ? ` (${short(r.pk)} pens)` : ''}` : '_ – _'}</td>
+        <td class="team away">${m.away ? `${flag(m.away)} ${short(m.away)}` : '<span class="tbd">TBD</span>'}</td>
+      </tr>`;
+    }).join('');
+    if (!matchRows.trim()) return;
+    bracketHtml += `<div class="round-block">
+      <div class="round-title">${label}</div>
+      <table class="match-table">${matchRows}</table>
+    </div>`;
+  });
+
+  // Bonus picks HTML
+  const bonusHtml = `
+    <div class="bonus-block">
+      <div class="round-title">Bonus Picks</div>
+      <table class="bonus-table">
+        <tr><td class="bonus-label">🏆 Winner</td><td>${bonus.winner ? `${flag(bonus.winner)} ${bonus.winner}` : '—'}</td></tr>
+        <tr><td class="bonus-label">🥈 Runner-up</td><td>${bonus.runnerUp ? `${flag(bonus.runnerUp)} ${bonus.runnerUp}` : '—'}</td></tr>
+        <tr><td class="bonus-label">🥉 3rd Place</td><td>${bonus.thirdPlace ? `${flag(bonus.thirdPlace)} ${bonus.thirdPlace}` : '—'}</td></tr>
+        <tr><td class="bonus-label">⚽ Golden Boot</td><td>${bonus.goldenBoot || '—'}</td></tr>
+        <tr><td class="bonus-label">⏱ Tie-break</td><td>${bonus.tiebreak || '—'}</td></tr>
+        <tr><td class="bonus-label">🃏 Joker Team</td><td>${joker.team ? `${flag(joker.team)} ${joker.team}` : '—'}</td></tr>
+        <tr><td class="bonus-label">🃏 Joker Group</td><td>${joker.group ? `Group ${joker.group}` : '—'}</td></tr>
+      </table>
+    </div>`;
+
+  const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <title>WC26 Predictions — ${user}</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 11px; color: #1a1715; background: white; }
+    .page { width: 100%; max-width: 780px; margin: 0 auto; padding: 20px; }
+    .header { border-bottom: 2px solid #9f1b1b; padding-bottom: 12px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: flex-end; }
+    .header-title { font-size: 22px; font-weight: 700; letter-spacing: -0.02em; }
+    .header-title span { color: #9f1b1b; font-style: italic; }
+    .header-meta { font-size: 11px; color: #6b635b; text-align: right; line-height: 1.6; }
+    .section-title { font-size: 14px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #9f1b1b; border-bottom: 1px solid #ddd2b8; padding-bottom: 4px; margin-bottom: 14px; }
+    .groups-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-bottom: 24px; }
+    .group-block { break-inside: avoid; }
+    .group-title { font-size: 11px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: #6b635b; margin-bottom: 4px; }
+    .match-table { width: 100%; border-collapse: collapse; }
+    .match-table tr { border-bottom: 1px solid #ede7d6; }
+    .match-table td { padding: 4px 3px; vertical-align: middle; }
+    .team { max-width: 120px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .team.home { text-align: right; }
+    .team.away { text-align: left; }
+    .score { text-align: center; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; padding: 4px 8px; color: #1b5e3f; }
+    .match-id { font-size: 9px; color: #9b9087; width: 28px; }
+    .tbd { color: #bbb; font-style: italic; }
+    .round-block { break-inside: avoid; margin-bottom: 16px; }
+    .round-title { font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #6b635b; margin-bottom: 4px; }
+    .bracket-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 24px; margin-bottom: 24px; }
+    .bracket-grid .round-block:last-child { grid-column: 1 / -1; }
+    .bonus-block { break-inside: avoid; }
+    .bonus-table { width: 100%; border-collapse: collapse; }
+    .bonus-table tr { border-bottom: 1px solid #ede7d6; }
+    .bonus-table td { padding: 6px 4px; }
+    .bonus-label { font-weight: 600; color: #6b635b; width: 140px; }
+    .page-break { page-break-after: always; break-after: page; }
+    .footer { margin-top: 24px; border-top: 1px solid #ddd2b8; padding-top: 8px; font-size: 10px; color: #9b9087; display: flex; justify-content: space-between; }
+    @media print {
+      body { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+      .no-print { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <div class="header">
+      <div>
+        <div class="header-title">WC26 <span>Predictions</span></div>
+        <div style="font-size:12px;color:#6b635b;margin-top:2px;">FIFA World Cup 2026 · June 11 – July 19</div>
+      </div>
+      <div class="header-meta">
+        <strong>${user}</strong><br/>
+        ${profile.team ? profile.team + ' · ' : ''}${profile.country || ''}<br/>
+        Printed ${new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+      </div>
+    </div>
+
+    <div class="section-title">Group Stage Predictions</div>
+    <div class="groups-grid">${groupsHtml}</div>
+
+    <div class="footer">
+      <span>SCB Treasury WC26 Predictions Competition</span>
+      <span>Page 1 of 2</span>
+    </div>
+  </div>
+
+  <div class="page-break"></div>
+
+  <div class="page">
+    <div class="header">
+      <div>
+        <div class="header-title">WC26 <span>Predictions</span></div>
+        <div style="font-size:12px;color:#6b635b;margin-top:2px;">Knockout Stage & Bonus Picks</div>
+      </div>
+      <div class="header-meta">
+        <strong>${user}</strong><br/>
+        ${profile.team ? profile.team + ' · ' : ''}${profile.country || ''}
+      </div>
+    </div>
+
+    <div class="section-title">Knockout Bracket</div>
+    <div class="bracket-grid">${bracketHtml}</div>
+
+    ${bonusHtml}
+
+    <div class="footer">
+      <span>SCB Treasury WC26 Predictions Competition</span>
+      <span>Page 2 of 2</span>
+    </div>
+  </div>
+
+  <script>window.print();</script>
+</body>
+</html>`;
+
+  const win = window.open('', '_blank');
+  if (win) {
+    win.document.write(html);
+    win.document.close();
+  }
+};
+
+function Header({ user, userProfile, onLogout, view, setView, saveStatus, locked, predictions, profiles }) {
   // Compute completion status for each tab
   const completion = useMemo(() => {
     const p = predictions || {};
@@ -2332,6 +2525,11 @@ function Header({ user, userProfile, onLogout, view, setView, saveStatus, locked
               <div style={{ fontSize: 11, color: 'var(--ink-soft)' }}>{userProfile.team} · {userProfile.country}</div>
             )}
           </div>
+          <button className="btn-ghost" style={{ background: 'none', border: 'none', padding: 6, color: 'var(--ink-soft)' }}
+            onClick={() => generatePrintWindow(predictions, user, profiles)}
+            title="Print / Save as PDF">
+            🖨️
+          </button>
           <button className="btn-ghost" style={{ background: 'none', border: 'none', padding: 6, color: 'var(--ink-soft)' }} onClick={onLogout} title="Sign out">
             <LogOut size={16} />
           </button>
@@ -4675,6 +4873,7 @@ function FieldView({ participants, allPredictions, profiles }) {
 function LeaderboardView({ participants, allPredictions, results, profiles }) {
   const [breakdown, setBreakdown] = useState('team');
   const [filter, setFilter] = useState('total');
+  const [miniLeague, setMiniLeague] = useState('all'); // 'all' | team name | country name
 
   const actualBonus = results.bonus || {};
   const actualTiebreak = actualBonus.tiebreak || '';
@@ -4682,6 +4881,9 @@ function LeaderboardView({ participants, allPredictions, results, profiles }) {
   const tiebreakActive = actualTiebreak || zeroZero;
   const grp = results.group || {};
   const ko = results.ko || {};
+
+  // Check if profiles have team/country data (SCB Treasury only)
+  const hasProfiles = participants.some(p => profiles[p]?.team || profiles[p]?.country);
 
   // Determine which filter sections are available based on actual results entered
   const availability = useMemo(() => {
@@ -4728,29 +4930,35 @@ function LeaderboardView({ participants, allPredictions, results, profiles }) {
     const snapshot = results.rankingSnapshot?.rankings || null;
     const koStarted = Object.keys(ko).length > 0;
 
-    return participants.map(p => {
-      const preds = allPredictions[p] || { group: {}, ko: {} };
-      const score = computeUserScore(preds, results.group || {}, results.ko || {}, results.bracketTeams, results.bonus || {}, preds.joker || {});
-      const tbGuess = preds.bonus?.tiebreak || '';
-      const tbDist = tiebreakActive ? tiebreakDistance(tbGuess, actualTiebreak, zeroZero) : null;
-      const profile = profiles[p] || {};
-      const maxPossible = koStarted
-        ? computeMaxPossible(preds, score.total, results.ko || {}, results.bonus || {}, preds.joker || {})
-        : null;
-      return { name: p, ...score, tbGuess, tbDist, profile, maxPossible, snapshotRank: snapshot ? snapshot.indexOf(p) : -1 };
-    }).sort((a, b) => {
-      const aVal = a.sectionPts?.[activeFilter] ?? a.total;
-      const bVal = b.sectionPts?.[activeFilter] ?? b.total;
-      if (bVal !== aVal) return bVal - aVal;
-      // Tiebreak only applies on total score view
-      if (activeFilter === 'total') {
-        if (a.tbDist == null || b.tbDist == null) return 0;
-        if (zeroZero) return b.tbDist - a.tbDist;
-        return a.tbDist - b.tbDist;
-      }
-      return 0;
-    });
-  }, [participants, allPredictions, results, profiles, activeFilter]);
+    return participants
+      .filter(p => {
+        if (miniLeague === 'all') return true;
+        const prof = profiles[p] || {};
+        const region = prof.country ? COUNTRY_REGION[prof.country] : null;
+        return prof.team === miniLeague || prof.country === miniLeague || region === miniLeague;
+      })
+      .map(p => {
+        const preds = allPredictions[p] || { group: {}, ko: {} };
+        const score = computeUserScore(preds, results.group || {}, results.ko || {}, results.bracketTeams, results.bonus || {}, preds.joker || {});
+        const tbGuess = preds.bonus?.tiebreak || '';
+        const tbDist = tiebreakActive ? tiebreakDistance(tbGuess, actualTiebreak, zeroZero) : null;
+        const profile = profiles[p] || {};
+        const maxPossible = koStarted
+          ? computeMaxPossible(preds, score.total, results.ko || {}, results.bonus || {}, preds.joker || {})
+          : null;
+        return { name: p, ...score, tbGuess, tbDist, profile, maxPossible, snapshotRank: snapshot ? snapshot.indexOf(p) : -1 };
+      }).sort((a, b) => {
+        const aVal = a.sectionPts?.[activeFilter] ?? a.total;
+        const bVal = b.sectionPts?.[activeFilter] ?? b.total;
+        if (bVal !== aVal) return bVal - aVal;
+        if (activeFilter === 'total') {
+          if (a.tbDist == null || b.tbDist == null) return 0;
+          if (zeroZero) return b.tbDist - a.tbDist;
+          return a.tbDist - b.tbDist;
+        }
+        return 0;
+      });
+  }, [participants, allPredictions, results, profiles, activeFilter, miniLeague]);
 
   const maxScore = Math.max(...scores.map(s => s.sectionPts?.[activeFilter] ?? s.total), 1);
   const actualMatchesDone = Object.values(results.group || {}).filter(r => r && r.h !== '' && r.h != null).length;
@@ -4768,6 +4976,20 @@ function LeaderboardView({ participants, allPredictions, results, profiles }) {
     });
     return Object.entries(stats)
       .map(([team, { count, totalPts }]) => ({ team, count, avg: count ? totalPts / count : 0 }))
+      .sort((a, b) => b.avg - a.avg);
+  }, [scores]);
+
+  const regionStats = useMemo(() => {
+    const stats = {};
+    scores.forEach(s => {
+      const region = s.profile?.country ? COUNTRY_REGION[s.profile.country] : null;
+      if (!region) return;
+      if (!stats[region]) stats[region] = { count: 0, totalPts: 0 };
+      stats[region].count++;
+      stats[region].totalPts += s.total;
+    });
+    return Object.entries(stats)
+      .map(([region, { count, totalPts }]) => ({ region, count, avg: count ? totalPts / count : 0 }))
       .sort((a, b) => b.avg - a.avg);
   }, [scores]);
 
@@ -4793,8 +5015,8 @@ function LeaderboardView({ participants, allPredictions, results, profiles }) {
         subtitle={actualMatchesDone === 0 ? 'No results entered yet — leaderboard will populate as matches are played.' : `${actualMatchesDone}/72 group matches resulted`}
       />
 
-      {/* Filter dropdown */}
-      <div style={{ marginTop: 16, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+      {/* Filters row */}
+      <div style={{ marginTop: 16, display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center' }}>
         <span className="micro-caps" style={{ flexShrink: 0 }}>Ranked by</span>
         <select
           value={activeFilter}
@@ -4820,11 +5042,56 @@ function LeaderboardView({ participants, allPredictions, results, profiles }) {
             ← Total
           </button>
         )}
+
+        {/* Mini-league filter — only shown for SCB Treasury (has team/country data) */}
+        {hasProfiles && (() => {
+          const teams = [...new Set(participants.map(p => profiles[p]?.team).filter(Boolean))].sort();
+          const countries = [...new Set(participants.map(p => profiles[p]?.country).filter(Boolean))].sort();
+          const regions = [...new Set(participants.map(p => {
+            const c = profiles[p]?.country;
+            return c ? COUNTRY_REGION[c] : null;
+          }).filter(Boolean))].sort();
+          return (
+            <select
+              value={miniLeague}
+              onChange={e => setMiniLeague(e.target.value)}
+              style={{
+                padding: '8px 12px', fontSize: 14, fontWeight: 600,
+                border: `1px solid ${miniLeague !== 'all' ? 'var(--burgundy)' : 'var(--line)'}`,
+                borderRadius: 4, background: miniLeague !== 'all' ? 'rgba(159,27,27,0.05)' : 'var(--paper)',
+                fontFamily: 'inherit', color: miniLeague !== 'all' ? 'var(--burgundy)' : 'var(--ink)',
+                minWidth: 160,
+              }}
+            >
+              <option value="all">🌍 All participants</option>
+              <optgroup label="── By Team ──">
+                {teams.map(t => <option key={t} value={t}>🏢 {t}</option>)}
+              </optgroup>
+              <optgroup label="── By Region ──">
+                {regions.map(r => <option key={r} value={r}>🗺 {r}</option>)}
+              </optgroup>
+              <optgroup label="── By Country ──">
+                {countries.map(c => <option key={c} value={c}>🌐 {c}</option>)}
+              </optgroup>
+            </select>
+          );
+        })()}
+        {miniLeague !== 'all' && (
+          <button className="btn-ghost btn" style={{ fontSize: 12, padding: '6px 10px' }}
+            onClick={() => setMiniLeague('all')}>
+            ✕ Clear filter
+          </button>
+        )}
       </div>
 
       {snapshotLabel && (
         <div style={{ marginTop: 10, fontSize: 12, color: 'var(--ink-soft)', display: 'flex', alignItems: 'center', gap: 6 }}>
           <span>📸</span> Movement vs: <strong>{snapshotLabel}</strong>
+        </div>
+      )}
+      {miniLeague !== 'all' && (
+        <div style={{ marginTop: 10, fontSize: 13, color: 'var(--burgundy)', fontWeight: 600 }}>
+          Showing {scores.length} participant{scores.length !== 1 ? 's' : ''} in: {miniLeague}
         </div>
       )}
 
@@ -4920,7 +5187,7 @@ function LeaderboardView({ participants, allPredictions, results, profiles }) {
             <h3 className="display" style={{ fontSize: 22, fontWeight: 700, margin: 0, letterSpacing: '-0.01em' }}>Breakdown</h3>
             <div style={{ flex: 1, height: 1, background: 'var(--line)' }} />
             <div style={{ display: 'inline-flex', background: 'var(--cream-2)', borderRadius: 6, padding: 2, border: '1px solid var(--line)' }}>
-              {['team', 'country'].map(b => (
+              {['team', 'region', 'country'].map(b => (
                 <button key={b} onClick={() => setBreakdown(b)} style={{
                   background: breakdown === b ? 'var(--ink)' : 'transparent',
                   color: breakdown === b ? 'var(--cream)' : 'var(--ink-soft)',
@@ -4946,6 +5213,29 @@ function LeaderboardView({ participants, allPredictions, results, profiles }) {
                   {teamStats.map(({ team, count, avg }, i) => (
                     <tr key={team} style={{ borderBottom: '1px solid var(--line-soft)', background: i === 0 ? 'rgba(214,137,42,0.05)' : 'transparent' }}>
                       <td style={{ padding: '9px 14px', fontWeight: i === 0 ? 700 : 400 }}>{team}</td>
+                      <td style={{ padding: '9px 14px', textAlign: 'center', color: 'var(--ink-soft)' }}>{count}</td>
+                      <td style={{ padding: '9px 14px', textAlign: 'right', fontWeight: 700 }} className="mono">{avg.toFixed(1)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {breakdown === 'region' && (
+            <div className="card" style={{ overflow: 'hidden' }}>
+              <table style={{ width: '100%', fontSize: 13, borderCollapse: 'collapse' }}>
+                <thead>
+                  <tr style={{ background: 'var(--cream-2)', borderBottom: '1px solid var(--line)' }}>
+                    <th style={{ padding: '8px 14px', textAlign: 'left', fontWeight: 600 }}>Region</th>
+                    <th style={{ padding: '8px 14px', textAlign: 'center', fontWeight: 600 }}>Participants</th>
+                    <th style={{ padding: '8px 14px', textAlign: 'right', fontWeight: 600 }}>Avg pts</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {regionStats.map(({ region, count, avg }, i) => (
+                    <tr key={region} style={{ borderBottom: '1px solid var(--line-soft)', background: i === 0 ? 'rgba(214,137,42,0.05)' : 'transparent' }}>
+                      <td style={{ padding: '9px 14px', fontWeight: i === 0 ? 700 : 400 }}>{region}</td>
                       <td style={{ padding: '9px 14px', textAlign: 'center', color: 'var(--ink-soft)' }}>{count}</td>
                       <td style={{ padding: '9px 14px', textAlign: 'right', fontWeight: 700 }} className="mono">{avg.toFixed(1)}</td>
                     </tr>
