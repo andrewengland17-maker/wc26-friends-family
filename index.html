@@ -1780,7 +1780,7 @@ const computeMatchBracketPts = (matchId, userBracket, actualDerivedBracket, actu
 
 
 // ── Competition config ────────────────────────────────────────────────
-const COMPETITION_ID = window.__COMPETITION_ID || 'scb-treasury';
+const COMPETITION_ID = 'friends-family';
 
 const COMPETITION_CONFIG = {
   'scb-treasury': {
@@ -2078,6 +2078,15 @@ function App() {
             profiles={profiles}
           />
         )}
+        {view === 'browse' && locked && (
+          <BrowseView
+            participants={participants}
+            allPredictions={allPredictions}
+            results={results}
+            profiles={profiles}
+            currentUser={currentUser}
+          />
+        )}
         {view === 'field' && locked && (
           <FieldView
             participants={participants}
@@ -2100,6 +2109,212 @@ function App() {
         )}
       </main>
       <Footer />
+    </div>
+  );
+}
+
+
+// ──────────────────────────────────────────────────────────────────────
+// BROWSE PICKS
+// ──────────────────────────────────────────────────────────────────────
+function BrowseView({ participants, allPredictions, results, profiles, currentUser }) {
+  const [selected, setSelected] = useState(null);
+
+  const sortedParticipants = useMemo(() => {
+    return [...participants].sort((a, b) => a.localeCompare(b));
+  }, [participants]);
+
+  const viewPreds = selected ? (allPredictions[selected] || { group: {}, ko: {} }) : null;
+
+  return (
+    <div>
+      <SectionHeader
+        kicker={`${participants.length} participants`}
+        title="Browse Picks"
+        subtitle="Select a participant to view their full predictions. Available once the competition is locked."
+      />
+
+      {/* Participant grid */}
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 16, marginBottom: 20 }}>
+        {sortedParticipants.map(p => {
+          const prof = profiles[p] || {};
+          const isMe = p === currentUser;
+          const isSelected = p === selected;
+          return (
+            <button
+              key={p}
+              className="pill"
+              onClick={() => setSelected(isSelected ? null : p)}
+              style={{
+                cursor: 'pointer',
+                background: isSelected ? 'var(--ink)' : isMe ? 'rgba(27,94,63,0.1)' : 'var(--cream-2)',
+                color: isSelected ? 'var(--cream)' : 'var(--ink)',
+                border: `1px solid ${isSelected ? 'var(--ink)' : isMe ? 'var(--forest)' : 'var(--line)'}`,
+                fontWeight: isSelected ? 700 : 400,
+                padding: '6px 12px',
+                fontSize: 13,
+              }}
+              title={prof.team ? `${prof.team} · ${prof.country}` : ''}
+            >
+              {p}{isMe ? ' (you)' : ''}
+            </button>
+          );
+        })}
+      </div>
+
+      {!selected && (
+        <div style={{ textAlign: 'center', padding: '40px 20px', color: 'var(--ink-soft)', fontSize: 14, fontStyle: 'italic' }}>
+          Tap a name above to view their picks
+        </div>
+      )}
+
+      {selected && viewPreds && (
+        <div className="fadein">
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, flexWrap: 'wrap', gap: 8 }}>
+            <div>
+              <div className="display" style={{ fontSize: 22, fontWeight: 700 }}>{selected}</div>
+              {profiles[selected] && (
+                <div style={{ fontSize: 12, color: 'var(--ink-soft)' }}>
+                  {profiles[selected].team && profiles[selected].team + ' · '}
+                  {profiles[selected].country}
+                </div>
+              )}
+            </div>
+            <button
+              className="btn"
+              style={{ fontSize: 12, padding: '6px 12px', background: 'var(--forest)', color: 'white', display: 'flex', alignItems: 'center', gap: 5 }}
+              onClick={() => printPicks(viewPreds, selected, profiles)}
+              title="Download this person's picks as PDF"
+            >
+              🖨️ Download as PDF
+            </button>
+          </div>
+
+          {/* Group stage picks — read only */}
+          <BrowseGroupStage predictions={viewPreds} results={results} />
+
+          {/* Knockout picks — read only */}
+          <div style={{ marginTop: 20 }}>
+            <div className="micro-caps" style={{ marginBottom: 10 }}>Knockout Bracket</div>
+            <BracketView
+              predictions={viewPreds}
+              onSave={() => {}}
+              results={results}
+              locked={true}
+            />
+          </div>
+
+          {/* Bonus picks */}
+          <BrowseBonus predictions={viewPreds} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function BrowseGroupStage({ predictions, results }) {
+  const [openGroup, setOpenGroup] = useState(null);
+  const standings = useMemo(() => computeAllStandings(predictions.group || {}), [predictions]);
+
+  return (
+    <div>
+      <div className="micro-caps" style={{ marginBottom: 10 }}>Group Stage Picks</div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {GROUP_KEYS.map(g => {
+          const matches = GROUP_MATCHES.filter(m => m.group === g);
+          const done = matches.filter(m => {
+            const r = (predictions.group || {})[m.id];
+            return r && r.h !== '' && r.h != null;
+          }).length;
+          const isOpen = openGroup === g;
+          return (
+            <div key={g} className="card" style={{ overflow: 'hidden' }}>
+              <button
+                onClick={() => setOpenGroup(isOpen ? null : g)}
+                style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'none', border: 'none', padding: '12px 16px', textAlign: 'left', cursor: 'pointer' }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <span className="group-letter" style={{ color: 'var(--burgundy)' }}>{g}</span>
+                  <span style={{ fontSize: 13, fontWeight: 600 }}>Group {g}</span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span className={`pill ${done === matches.length ? 'pill-success' : ''}`}>{done}/{matches.length}</span>
+                  {isOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                </div>
+              </button>
+              {isOpen && (
+                <div className="fadein" style={{ borderTop: '1px solid var(--line)', padding: '12px 16px' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) auto minmax(0,1fr)', alignItems: 'center', gap: 0 }}>
+                    {matches.map(m => {
+                      const r = (predictions.group || {})[m.id] || {};
+                      const actual = (results.group || {})[m.id] || {};
+                      const hasScore = r.h !== '' && r.h != null && r.a !== '' && r.a != null;
+                      const hasActual = actual.h !== '' && actual.h != null && actual.a !== '' && actual.a != null;
+                      return (
+                        <React.Fragment key={m.id}>
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 4, padding: '6px 0', borderBottom: '1px solid var(--line-soft)' }}>
+                            <span style={{ fontSize: 13 }}>{teamShort(m.home)}</span>
+                            <Flag team={m.home} size={14} />
+                          </div>
+                          <div style={{ textAlign: 'center', padding: '6px 8px', borderBottom: '1px solid var(--line-soft)' }}>
+                            <span style={{ fontWeight: 700, color: 'var(--forest)', fontVariantNumeric: 'tabular-nums' }}>
+                              {hasScore ? `${r.h}–${r.a}` : '–'}
+                            </span>
+                            {hasActual && (
+                              <div style={{ fontSize: 10, color: 'var(--ink-soft)', marginTop: 2 }}>
+                                ({actual.h}–{actual.a})
+                              </div>
+                            )}
+                          </div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '6px 0', borderBottom: '1px solid var(--line-soft)' }}>
+                            <Flag team={m.away} size={14} />
+                            <span style={{ fontSize: 13 }}>{teamShort(m.away)}</span>
+                          </div>
+                        </React.Fragment>
+                      );
+                    })}
+                  </div>
+                  <div style={{ marginTop: 12, background: 'var(--cream-2)', padding: 10, borderRadius: 4 }}>
+                    <StandingsTable standings={standings[g] || []} />
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function BrowseBonus({ predictions }) {
+  const bonus = predictions.bonus || {};
+  const joker = predictions.joker || {};
+
+  const rows = [
+    { icon: '🏆', label: 'Winner', value: bonus.winner },
+    { icon: '🥈', label: 'Runner-up', value: bonus.runnerUp },
+    { icon: '🥉', label: '3rd Place', value: bonus.thirdPlace },
+    { icon: '⚽', label: 'Golden Boot', value: bonus.goldenBoot },
+    { icon: '⏱', label: 'Tie-break', value: bonus.tiebreak },
+    { icon: '🃏', label: 'Joker Team', value: joker.team },
+    { icon: '🃏', label: 'Joker Group', value: joker.group ? `Group ${joker.group}` : null },
+  ];
+
+  return (
+    <div className="card" style={{ padding: 18, marginTop: 20 }}>
+      <div className="micro-caps" style={{ marginBottom: 12 }}>Bonus Picks</div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 10 }}>
+        {rows.map(({ icon, label, value }) => (
+          <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontSize: 16 }}>{icon}</span>
+            <div>
+              <div style={{ fontSize: 10, color: 'var(--ink-soft)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{label}</div>
+              <div style={{ fontSize: 13, fontWeight: 600 }}>{value || <span style={{ color: 'var(--ink-soft)', fontStyle: 'italic' }}>Not set</span>}</div>
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -6601,6 +6816,6 @@ function BracketTeamsAdmin({ results, onSave }) {
 
 
 ReactDOM.createRoot(document.getElementById('root')).render(<App />);
-  </script>
+</script>
 </body>
 </html>
