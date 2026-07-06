@@ -5033,19 +5033,33 @@ function BracketView({ predictions, onSave, results, locked }) {
       if (pts > 0) map[mId] = pts;
     }
 
-    // Score R16+ — same side-aware check
+    // Build full actual R16+ slot maps from actualDerived bracket
+    // Teams appear here as their feeding round matches complete — no gating on match result
+    const fullActualSlotByTeamR16Plus = {};
+    for (let mId = 89; mId <= 104; mId++) {
+      const round = ROUND_FOR(mId);
+      if (!round) continue;
+      const home = actualDerived[mId]?.home;
+      const away = actualDerived[mId]?.away;
+      if (home) { if (!fullActualSlotByTeamR16Plus[round]) fullActualSlotByTeamR16Plus[round] = {}; fullActualSlotByTeamR16Plus[round][home] = { matchId: mId, side: 'home' }; }
+      if (away) { if (!fullActualSlotByTeamR16Plus[round]) fullActualSlotByTeamR16Plus[round] = {}; fullActualSlotByTeamR16Plus[round][away] = { matchId: mId, side: 'away' }; }
+    }
+
+    // Score R16+ — triggered by user's predicted match result, not team's actual match
     for (let mId = 89; mId <= 104; mId++) {
       const round = ROUND_FOR(mId);
       if (!round || !SCORING.bracketTeam[round]) continue;
+      const r = koResults[mId];
+      if (!r || r.h == null || r.h === '') continue; // gate on THIS match's result
       const um = bracket[mId];
       if (!um) continue;
       const v = SCORING.bracketTeam[round];
       let pts = 0;
       [{ team: um.home, side: 'home' }, { team: um.away, side: 'away' }].forEach(({ team, side }) => {
         if (!team) return;
-        const actual = actualMatchByTeamByRound[round]?.[team];
-        if (!actual) return;
-        if (actual.matchId === mId && actual.side === side) pts += v;
+        const actualSlot = fullActualSlotByTeamR16Plus[round]?.[team];
+        if (!actualSlot) return;
+        if (actualSlot.matchId === mId && actualSlot.side === side) pts += v;
         else pts += v * SCORING.halfMultiplier;
       });
       if (pts > 0) map[mId] = pts;
