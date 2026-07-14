@@ -6261,7 +6261,7 @@ const JOKER_SECTIONS = [
   { key: 'group', label: 'Joker Group', icon: '🃏' },
 ];
 
-function DistributionChart({ entries, isTeam, total, eliminatedTeams = [] }) {
+function DistributionChart({ entries, isTeam, total, eliminatedTeams = [], isImpossible }) {
   if (!entries.length) return (
     <div style={{ color: 'var(--ink-soft)', fontSize: 13, fontStyle: 'italic', padding: '8px 0' }}>No picks yet.</div>
   );
@@ -6272,21 +6272,22 @@ function DistributionChart({ entries, isTeam, total, eliminatedTeams = [] }) {
         const pct = total > 0 ? Math.round((count / total) * 100) : 0;
         const barPct = max > 0 ? (count / max) * 100 : 0;
         const isElim = isTeam && eliminatedTeams.includes(label);
+        const impossible = isImpossible ? isImpossible(label) : isElim;
         return (
-          <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 10, opacity: isElim ? 0.45 : 1 }}>
+          <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 10, opacity: impossible ? 0.45 : 1 }}>
             <div style={{ width: 18, textAlign: 'right', fontSize: 11, color: 'var(--ink-soft)', flexShrink: 0 }}>
               {i + 1}
             </div>
             <div style={{ width: 22, textAlign: 'center', flexShrink: 0 }}>
               {isTeam ? (TEAM_FLAGS[label] || '⚽') : '👤'}
             </div>
-            <div style={{ width: 110, fontSize: 13, fontWeight: i === 0 ? 700 : 500, flexShrink: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', textDecoration: isElim ? 'line-through' : 'none', color: isElim ? 'var(--ink-soft)' : 'inherit' }}>
+            <div style={{ width: 110, fontSize: 13, fontWeight: i === 0 ? 700 : 500, flexShrink: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', textDecoration: impossible ? 'line-through' : 'none', color: impossible ? 'var(--ink-soft)' : 'inherit' }}>
               {isTeam ? teamShort(label) : label}
             </div>
             <div style={{ flex: 1, height: 18, background: 'var(--cream-2)', borderRadius: 3, overflow: 'hidden', position: 'relative' }}>
               <div style={{
                 width: `${barPct}%`, height: '100%', borderRadius: 3,
-                background: isElim ? 'var(--line)' : i === 0 ? 'var(--burgundy)' : i === 1 ? 'var(--amber)' : 'var(--line)',
+                background: impossible ? 'var(--line)' : i === 0 ? 'var(--burgundy)' : i === 1 ? 'var(--amber)' : 'var(--line)',
                 transition: 'width 0.4s ease',
               }} />
             </div>
@@ -6471,6 +6472,66 @@ function FieldView({ participants, allPredictions, profiles, eliminatedTeams = [
 
   const total = participants.length;
 
+  // Compute which teams/players are still eligible for each bonus position
+  const positionEligibility = useMemo(() => {
+    const ko = results.ko || {};
+    const { bracket: actualBkt } = buildActualBracket(results.group || {}, ko);
+
+    const sfWinners = new Set(), sfLosers = new Set();
+    [101, 102].forEach(mId => {
+      const r = ko[mId]; const m = actualBkt[mId];
+      if (!r || r.h == null || r.h === '' || !m?.home || !m?.away) return;
+      const h = parseInt(r.h), a = parseInt(r.a);
+      const winner = h > a ? m.home : a > h ? m.away : (r.pkWinner || null);
+      const loser = winner ? (winner === m.home ? m.away : m.home) : null;
+      if (winner) sfWinners.add(winner);
+      if (loser) sfLosers.add(loser);
+    });
+
+    let finalWinner = null, finalLoser = null;
+    const r104 = ko[104]; const m104 = actualBkt[104];
+    if (r104 && r104.h != null && r104.h !== '' && m104?.home && m104?.away) {
+      const h = parseInt(r104.h), a = parseInt(r104.a);
+      finalWinner = h > a ? m104.home : a > h ? m104.away : (r104.pkWinner || null);
+      finalLoser = finalWinner ? (finalWinner === m104.home ? m104.away : m104.home) : null;
+    }
+
+    const isElim = (team) => eliminatedTeams.includes(team);
+
+    // 3rd place match result
+    let thirdWinner = null;
+    const r103 = ko[103]; const m103 = actualBkt[103];
+    if (r103 && r103.h != null && r103.h !== '' && m103?.home && m103?.away) {
+      const h = parseInt(r103.h), a = parseInt(r103.a);
+      thirdWinner = h > a ? m103.home : a > h ? m103.away : (r103.pkWinner || null);
+    }
+
+    return {
+      winner: (label) => {
+        if (finalWinner) return label !== finalWinner;
+        if (sfWinners.size === 2) return !sfWinners.has(label);
+        if (sfLosers.size >= 1) return sfLosers.has(label) || isElim(label);
+        return isElim(label);
+      },
+      runnerUp: (label) => {
+        if (finalLoser) return label !== finalLoser;
+        if (sfWinners.size === 2) return !sfWinners.has(label);
+        if (sfLosers.size >= 1) return sfLosers.has(label) || isElim(label);
+        return isElim(label);
+      },
+      thirdPlace: (label) => {
+        if (thirdWinner) return label !== thirdWinner;
+        if (sfLosers.size === 2) return !sfLosers.has(label);
+        if (sfWinners.size >= 1) return sfWinners.has(label) || isElim(label);
+        return isElim(label);
+      },
+      goldenBoot: (label) => {
+        const team = getGBTeam(label);
+        return team ? isElim(team) : false;
+      },
+    };
+  }, [results, eliminatedTeams]);
+
   // Tally bonus picks
   const bonusTallies = useMemo(() => {
     const tallies = {};
@@ -6593,7 +6654,9 @@ function FieldView({ participants, allPredictions, profiles, eliminatedTeams = [
                   </div>
                 )}
               </div>
-              <DistributionChart entries={entries} isTeam={isTeam} total={picked} eliminatedTeams={eliminatedTeams} />
+              <DistributionChart entries={entries} isTeam={isTeam} total={picked}
+                eliminatedTeams={eliminatedTeams}
+                isImpossible={positionEligibility[key]} />
             </div>
           );
         })}
